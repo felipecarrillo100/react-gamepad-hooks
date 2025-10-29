@@ -1,7 +1,7 @@
 {
   "name": "react-gamepad-hooks",
   "description": "React hooks for detecting and handling gamepads and joysticks (PlayStation, Xbox, etc).",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

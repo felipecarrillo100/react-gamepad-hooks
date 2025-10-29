@@ -1,8 +1,20 @@
 import { useEffect, useRef, useState } from "react";
 
+// ------------------- Constants -------------------
 export const JOYSTICK_EMIT_ALWAYS = "JoystickEmitAlways";
 export const JOYSTICK_EMIT_ON_CHANGE = "JoystickEmitOnChange";
 
+export const STANDARD_BUTTONS = [
+    "Face1", "Face2", "Face3", "Face4",
+    "LeftBumper", "RightBumper", "LeftTrigger", "RightTrigger",
+    "Share", "Options", "LeftStick", "RightStick",
+    "DPadUp", "DPadDown", "DPadLeft", "DPadRight",
+    "Home"
+];
+
+type Side = "left" | "right";
+
+// ------------------- Types -------------------
 export interface GamepadInfo {
     connected: boolean;
     id?: string;
@@ -18,6 +30,19 @@ export interface GamepadManagerHook {
     gamepads: GamepadInfo[];
     nextAvailable: () => number | null;
     markBusy: (index: number, busy: boolean) => void;
+}
+
+export interface GamepadJoystickProps {
+    id: number;
+    onLeftJoystickMove?: (dx: number, dy: number) => void;
+    onRightJoystickMove?: (dx: number, dy: number) => void;
+    onButtonBinary?: (name: string, value: boolean) => void;
+    onButtonAnalog?: (name: string, value: number) => void;
+    joystickRateHz?: number;
+    joystickEmitMode?: typeof JOYSTICK_EMIT_ALWAYS | typeof JOYSTICK_EMIT_ON_CHANGE;
+    deadzone?: number;
+    triggerThreshold?: number;
+    triggerEpsilon?: number;
 }
 
 // ------------------- useGamepadManager -------------------
@@ -76,29 +101,6 @@ export const useGamepadManager = (): GamepadManagerHook => {
 };
 
 // ------------------- useGamepadJoystick -------------------
-export interface GamepadJoystickProps {
-    id: number;
-    onLeftJoystickMove?: (dx: number, dy: number) => void;
-    onRightJoystickMove?: (dx: number, dy: number) => void;
-    onButtonBinary?: (name: string, value: boolean) => void;
-    onButtonAnalog?: (name: string, value: number) => void;
-    joystickRateHz?: number;
-    joystickEmitMode?: typeof JOYSTICK_EMIT_ALWAYS | typeof JOYSTICK_EMIT_ON_CHANGE;
-    deadzone?: number;
-    triggerThreshold?: number;
-    triggerEpsilon?: number;
-}
-
-export const STANDARD_BUTTONS = [
-    "Face1", "Face2", "Face3", "Face4",
-    "LeftBumper", "RightBumper", "LeftTrigger", "RightTrigger",
-    "Share", "Options", "LeftStick", "RightStick",
-    "DPadUp", "DPadDown", "DPadLeft", "DPadRight",
-    "Home"
-];
-
-type Side = "left" | "right";
-
 export const useGamepadJoystick = ({
                                        id,
                                        onLeftJoystickMove,
@@ -148,14 +150,15 @@ export const useGamepadJoystick = ({
                 const callback = side === "left" ? onLeftJoystickMove : onRightJoystickMove;
 
                 const isNeutral = next.dx === 0 && next.dy === 0;
-                const wasNeutral = !lastNonNeutralRef.current[side];
                 const changed = next.dx !== prev[side].dx || next.dy !== prev[side].dy;
 
                 if (joystickEmitMode === JOYSTICK_EMIT_ALWAYS) {
                     if (callback && shouldEmit) callback(next.dx, next.dy);
                 } else {
+                    // JOYSTICK_EMIT_ON_CHANGE
+                    const wasNonNeutral = lastNonNeutralRef.current[side];
                     if (isNeutral) {
-                        if (!wasNeutral && callback) callback(0, 0);
+                        if (wasNonNeutral && callback) callback(0, 0);
                     } else {
                         if (callback && (changed || shouldEmit)) callback(next.dx, next.dy);
                     }
@@ -165,6 +168,7 @@ export const useGamepadJoystick = ({
                 lastNonNeutralRef.current[side] = !isNeutral;
             });
 
+            // --- BUTTONS ---
             gp.buttons.forEach((btn, i) => {
                 const name = STANDARD_BUTTONS[i] ?? `Button${i}`;
                 const value = btn.value;
