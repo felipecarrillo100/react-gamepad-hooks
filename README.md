@@ -1,122 +1,153 @@
-React Gamepad Hooks
+# React Gamepad Hooks
 
-## Description
-
-A set of React hooks to handle **gamepad input**, including:
-
-- Detecting connected gamepads
-- Selecting available gamepads
-- Reading joystick axes
-- Detecting button presses (digital and analog triggers)
-- Configurable update rates and emission modes
-
-### Benefits
-
-- **Responsive Design**: Works flawlessly on different screen sizes, orientations, and aspect ratios.
-- **Optional controls**: Only show joysticks or buttons if the corresponding callbacks are provided.
-- **Customizable**: Easily tweak colors, sizes, positions, and offsets through SCSS variables.
-- **Lightweight & Dependency-Free**: No frameworks, no bloated libraries, just clean React code.
-- **Multiplatform**: Optimized for iOS and Android touch devices.
-- **Intuitive & Smooth**: Pointer events, dead-zone handling, and dynamic joystick scaling ensure precise input.
-- **Future-Proof**: Ready for games and apps that require rapid prototyping or full-scale production.
+A modern, lightweight, **React-first library** to handle gamepad input with ease directly in your browser.
+Supports joysticks, buttons (digital and analog), triggers, and multiple controllers — perfect for games, simulations, VR/AR, robotics dashboards, and interactive web apps.
 
 ---
+
+## Why You’ll Love It
+
+* 🎮 **Plug-and-play** – Detects gamepads instantly, even if already connected before page load.
+* ⚡ **Ultra-responsive** – Joystick movements and button presses trigger instantly.
+* 🕹️ **Supports all controllers** – Xbox, PlayStation, generic USB controllers — analog and digital buttons fully supported.
+* 🔄 **Flexible event system** – Emit updates on change or continuously, including analog trigger values.
+* 🧩 **React-native integration** – Built as hooks for modern functional components.
+* 💡 **Precision control** – Configurable joystick deadzones, trigger thresholds, and update rates.
+* 🏎️ **Perfect for interactive apps** – Games, simulators, robotics dashboards, and experimental interfaces.
+* 🏆 **Lightweight & dependency-free** – Pure React + browser Gamepad API, no extra dependencies.
+
+---
+
 ## Installation
 
-Install via npm:
-
 ```bash
-npm install ipad-dual-joystick
+npm install react-gamepad-hooks
+# or
+yarn add react-gamepad-hooks
 ```
 
-## Usage
+---
+
+## Hooks
+
+### `useGamepadManager()`
+
+Tracks all connected gamepads and their status.
+
+```ts
+import { useGamepadManager } from "react-gamepad-hooks";
+
+const { gamepads, nextAvailable, markBusy } = useGamepadManager();
+```
+
+#### Returns
+
+* `gamepads: GamepadInfo[]` – List of connected gamepads
+* `nextAvailable(): number | null` – Index of next free gamepad
+* `markBusy(index: number, busy: boolean)` – Mark a gamepad busy or available
+
+#### `GamepadInfo`
+
+```ts
+interface GamepadInfo {
+  connected: boolean;
+  id?: string;
+  index?: number;
+  mapping?: string;
+  axes?: number;
+  buttons?: number;
+  battery?: number | null;
+  busy?: boolean;
+}
+```
+
+---
+
+### `useGamepadJoystick(props)`
+
+Tracks a single gamepad’s joysticks and buttons.
+
+```ts
+import { useGamepadJoystick, JOYSTICK_EMIT_ON_CHANGE, JOYSTICK_EMIT_ALWAYS } from "react-gamepad-hooks";
+
+useGamepadJoystick({
+  id: selectedGamepadIndex,
+  joystickRateHz: 60,
+  joystickEmitMode: JOYSTICK_EMIT_ON_CHANGE,
+  onLeftJoystickMove: (dx, dy) => console.log("Left stick:", dx, dy),
+  onRightJoystickMove: (dx, dy) => console.log("Right stick:", dx, dy),
+  onButtonBinary: (name, pressed) => console.log("Button", name, pressed),
+  onButtonAnalog: (name, value) => console.log("Trigger", name, value)
+});
+```
+
+#### Props
+
+| Prop                  | Type                      | Description                                                    |                     |
+| --------------------- | ------------------------- | -------------------------------------------------------------- | ------------------- |
+| `id`                  | `number`                  | Gamepad index to listen to                                     |                     |
+| `onLeftJoystickMove`  | `(dx, dy) => void`        | Called when left joystick moves                                |                     |
+| `onRightJoystickMove` | `(dx, dy) => void`        | Called when right joystick moves                               |                     |
+| `onButtonBinary`      | `(name, pressed) => void` | Called on button press/release                                 |                     |
+| `onButtonAnalog`      | `(name, value) => void`   | Called for analog triggers on value change                     |                     |
+| `joystickRateHz`      | `number`                  | Axes update frequency (default 30 Hz)                          |                     |
+| `joystickEmitMode`    | `'JoystickEmitAlways'     | 'JoystickEmitOnChange'`                                        | Event emission mode |
+| `triggerThreshold`    | `number`                  | Minimum analog trigger value to consider pressed (default 0.1) |                     |
+| `triggerEpsilon`      | `number`                  | Minimum analog trigger change to emit event (default 0.01)     |                     |
+
+---
+
+### Standard Button Names
+
+```ts
+[
+  "Face1","Face2","Face3","Face4",
+  "LeftBumper","RightBumper","LeftTrigger","RightTrigger",
+  "Share","Options","LeftStick","RightStick",
+  "DPadUp","DPadDown","DPadLeft","DPadRight",
+  "Home"
+]
+```
+
+---
+
+## Example Usage
 
 ```tsx
-import React from "react";
-// Import Javascript Module
-import { MobileJoystickControls } from "ipad-dual-joystick";
-// Import SCSS/CSS styling
-import "ipad-dual-joystick/dist/styles.scss";
-// Optionally, import styles-fade for the controls to hide when inactive for a few seconds
-import "ipad-dual-joystick/dist/styles-fade.scss";
-const MyGame: React.FC = () => {
-    const handleLeftMove = (dx: number, dy: number) => {
-        console.log("Left joystick:", dx, dy);
-    };
+import React, { useState } from "react";
+import { useGamepadManager, useGamepadJoystick, STANDARD_BUTTONS } from "react-gamepad-hooks";
 
-    const handleRightMove = (dx: number, dy: number) => {
-        console.log("Right joystick:", dx, dy);
-    };
+export const GameJoystickControls = () => {
+  const { gamepads, nextAvailable, markBusy } = useGamepadManager();
+  const [selectedId, setSelectedId] = useState<number | null>(nextAvailable());
+  const [buttons, setButtons] = useState<Record<string, boolean | number>>({});
 
-    const handleUp = (active: boolean) => console.log("Up:", active);
-    const handleDown = (active: boolean) => console.log("Down:", active);
-    const handleA = (active: boolean) => console.log("A:", active);
-    const handleB = (active: boolean) => console.log("B:", active);
+  useGamepadJoystick({
+    id: selectedId ?? -1,
+    onButtonBinary: (name, pressed) => setButtons(b => ({ ...b, [name]: pressed })),
+    onButtonAnalog: (name, value) => setButtons(b => ({ ...b, [name]: value })),
+  });
 
-    return (
-        <MobileJoystickControls
-            onLeftJoystickMove={handleLeftMove}   // optional
-            onRightJoystickMove={handleRightMove} // optional
-            onUp={handleUp}                       // optional
-            onDown={handleDown}                   // optional
-            onButtonA={handleA}                   // optional
-            onButtonB={handleB}                   // optional
-        />
-    );
+  return (
+    <div>
+      <h2>Gamepad Buttons</h2>
+      {STANDARD_BUTTONS.map(name => (
+        <p key={name}>{name}: {buttons[name] ? buttons[name].toString() : "OFF"}</p>
+      ))}
+    </div>
+  );
 };
 ```
-## Styling
 
-You can fully customize the appearance of joysticks and buttons using SCSS:
+---
 
-```scss
-$joystick-bg: rgba(50, 50, 50, 0.5);
-$joystick-handle-bg: #ff0000;
-$joystick-handle-active-bg: #00ff00;
-$button-bg: #333333;
-$button-active-bg: #ff8800;
+## Notes
 
-@import "ipad-dual-joystick/dist/MobileJoystickControls.scss";
+* Gamepads may require a first interaction (button press or stick move) for the browser to report them.
+* Analog triggers are fully supported, yet can also act as digital buttons.
+* Works on all modern browsers supporting the [Gamepad API](https://developer.mozilla.org/en-US/docs/Web/API/Gamepad_API).
 
-```
-
-Variables you can customize:
-
-- $joystick-bg
-- $joystick-handle-bg
-- $joystick-handle-active-bg
-- $button-bg
-- $button-active-bg
-- $button-color
-- $button-active-color
-- $joystick-size
-- $joystick-handle-size
-- $button-size
-- $button-gap
-- $joystick-offset-vertical
-- $joystick-offset-horizontal
-- $button-offset-vertical
-
-## Features
-
-- Dual joysticks with smooth analog input
-- Optional action buttons (A and B)
-- Dead-zone and scaling for precise control
-- Responsive layout for portrait and landscape modes
-- Fully customizable via SCSS or CSS
-
-## Props
-Optional callbacks: if you don’t provide a callback, the corresponding joystick or button will not render.
-
-| Prop                  | Type                               | Optional | Description                              |
-| --------------------- | ---------------------------------- |----------| ---------------------------------------- |
-| `onLeftJoystickMove`  | `(dx: number, dy: number) => void` | Yes      | Callback for left joystick movement      |
-| `onRightJoystickMove` | `(dx: number, dy: number) => void` | Yes      | Callback for right joystick movement     |
-| `onUp`                | `(active: boolean) => void`        | Yes      | Callback for "Up" button press/release   |
-| `onDown`              | `(active: boolean) => void`        | Yes      | Callback for "Down" button press/release |
-| `onButtonA`           | `(active: boolean) => void`        | Yes      | Callback for "A" button press/release    |
-| `onButtonB`           | `(active: boolean) => void`        | Yes      | Callback for "B" button press/release    |
-
+---
 
 ## License
 
