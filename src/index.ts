@@ -30,7 +30,6 @@ export const useGamepadManager = (): GamepadManagerHook => {
 
         for (const gp of gps) {
             if (!gp) continue;
-            const battery = (gp as any).batteryLevel ?? null;
             gpInfos.push({
                 connected: gp.connected,
                 id: gp.id,
@@ -38,7 +37,7 @@ export const useGamepadManager = (): GamepadManagerHook => {
                 mapping: gp.mapping,
                 axes: gp.axes.length,
                 buttons: gp.buttons.length,
-                battery,
+                battery: (gp as any).batteryLevel ?? null,
                 busy: gamepads.find(g => g.index === gp.index)?.busy ?? false,
             });
         }
@@ -48,25 +47,23 @@ export const useGamepadManager = (): GamepadManagerHook => {
 
     useEffect(() => {
         updateGamepads();
+        const handle = () => updateGamepads();
 
-        const handleConnect = () => updateGamepads();
-        const handleDisconnect = () => updateGamepads();
+        window.addEventListener("gamepadconnected", handle);
+        window.addEventListener("gamepaddisconnected", handle);
 
-        window.addEventListener("gamepadconnected", handleConnect);
-        window.addEventListener("gamepaddisconnected", handleDisconnect);
-
-        const poll = setInterval(updateGamepads, 1000); // in case gamepads were connected before
+        const poll = setInterval(updateGamepads, 1000);
 
         return () => {
-            window.removeEventListener("gamepadconnected", handleConnect);
-            window.removeEventListener("gamepaddisconnected", handleDisconnect);
+            window.removeEventListener("gamepadconnected", handle);
+            window.removeEventListener("gamepaddisconnected", handle);
             clearInterval(poll);
         };
     }, []);
 
     const nextAvailable = () => {
-        const available = gamepads.find(gp => gp.connected && !gp.busy);
-        return available ? available.index ?? null : null;
+        const gp = gamepads.find(g => g.connected && !g.busy);
+        return gp ? gp.index ?? null : null;
     };
 
     const markBusy = (index: number, busy: boolean) => {
@@ -87,15 +84,16 @@ export interface GamepadJoystickProps {
     onButtonAnalog?: (name: string, value: number) => void;
     joystickRateHz?: number;
     joystickEmitMode?: typeof JOYSTICK_EMIT_ALWAYS | typeof JOYSTICK_EMIT_ON_CHANGE;
+    deadzone?: number;
     triggerThreshold?: number;
     triggerEpsilon?: number;
 }
 
 export const STANDARD_BUTTONS = [
-    "Face1","Face2","Face3","Face4",
-    "LeftBumper","RightBumper","LeftTrigger","RightTrigger",
-    "Share","Options","LeftStick","RightStick",
-    "DPadUp","DPadDown","DPadLeft","DPadRight",
+    "Face1", "Face2", "Face3", "Face4",
+    "LeftBumper", "RightBumper", "LeftTrigger", "RightTrigger",
+    "Share", "Options", "LeftStick", "RightStick",
+    "DPadUp", "DPadDown", "DPadLeft", "DPadRight",
     "Home"
 ];
 
@@ -107,80 +105,104 @@ export const useGamepadJoystick = ({
                                        onButtonAnalog,
                                        joystickRateHz = 30,
                                        joystickEmitMode = JOYSTICK_EMIT_ON_CHANGE,
+                                       deadzone = 0.1,
                                        triggerThreshold = 0.1,
                                        triggerEpsilon = 0.01
                                    }: GamepadJoystickProps) => {
-    const lastUpdateRef = useRef(0);
-    const prevAxesRef = useRef({ left: { dx: 0, dy: 0 }, right: { dx: 0, dy: 0 } });
+
+    const lastEmitTimeRef = useRef(0);
+    const lastNonNeutralRef = useRef({ left: false, right: false });
+    const prevAxesRef = useRef({
+        left: { dx: 0, dy: 0 },
+        right: { dx: 0, dy: 0 }
+    });
     const prevButtonsRef = useRef<Record<string, number>>({});
 
     useEffect(() => {
         const intervalMs = 1000 / joystickRateHz;
 
-        const pollGamepad = () => {
+        const poll = () => {
             const gps = navigator.getGamepads ? navigator.getGamepads() : [];
             const gp = gps[id];
-            if (!gp) {
-                requestAnimationFrame(pollGamepad);
-                return;
-            }
+            if (!gp) return requestAnimationFrame(poll);
 
             const now = performance.now();
-            const allowAxesUpdate = now - lastUpdateRef.current >= intervalMs;
-
-            // --- AXES ---
-            if (allowAxesUpdate) {
-                lastUpdateRef.current = now;
-
-                const leftX = Math.abs(gp.axes[0]) > 0.1 ? gp.axes[0] : 0;
-                const leftY = Math.abs(gp.axes[1]) > 0.1 ? -gp.axes[1] : 0;
-                const rightX = Math.abs(gp.axes[2]) > 0.1 ? gp.axes[2] : 0;
-                const rightY = Math.abs(gp.axes[3]) > 0.1 ? -gp.axes[3] : 0;
-
-                if (onLeftJoystickMove) {
-                    const changed = leftX !== prevAxesRef.current.left.dx || leftY !== prevAxesRef.current.left.dy;
-                    if (joystickEmitMode === JOYSTICK_EMIT_ALWAYS || changed) {
-                        onLeftJoystickMove(leftX, leftY);
-                        prevAxesRef.current.left = { dx: leftX, dy: leftY };
+            const shouldEmitThisFrame = (now - lastEmitTimeRef.current) >= intervalMs;
+            const updateAxes = () => {
+                const raw = {
+                    left: {
+                        dx: Math.abs(gp.axes[0]) > deadzone ? gp.axes[0] : 0,
+                        dy: Math.abs(gp.axes[1]) > deadzone ? -gp.axes[1] : 0,
+                    },
+                    right: {
+                        dx: Math.abs(gp.axes[2]) > deadzone ? gp.axes[2] : 0,
+                        dy: Math.abs(gp.axes[3]) > deadzone ? -gp.axes[3] : 0,
                     }
-                }
+                };
 
-                if (onRightJoystickMove) {
-                    const changed = rightX !== prevAxesRef.current.right.dx || rightY !== prevAxesRef.current.right.dy;
-                    if (joystickEmitMode === JOYSTICK_EMIT_ALWAYS || changed) {
-                        onRightJoystickMove(rightX, rightY);
-                        prevAxesRef.current.right = { dx: rightX, dy: rightY };
+                const prev = prevAxesRef.current;
+
+                ["left", "right"].forEach(side => {
+                    const next = raw[side as "left" | "right"];
+                    const wasNeutral = !lastNonNeutralRef.current[side];
+                    const isNeutral = next.dx === 0 && next.dy === 0;
+                    const changed = next.dx !== prev[side].dx || next.dy !== prev[side].dy;
+                    const callback = side === "left" ? onLeftJoystickMove : onRightJoystickMove;
+
+                    if (joystickEmitMode === JOYSTICK_EMIT_ALWAYS) {
+                        if (shouldEmitThisFrame && callback) callback(next.dx, next.dy);
+
+                    } else {
+                        // JOYSTICK_EMIT_ON_CHANGE
+                        if (isNeutral) {
+                            if (!wasNeutral && callback) callback(0, 0);
+                        } else {
+                            if ((changed || shouldEmitThisFrame) && callback)
+                                callback(next.dx, next.dy);
+                        }
                     }
-                }
+
+                    prev[side] = next;
+                    lastNonNeutralRef.current[side] = !isNeutral;
+                });
+            };
+
+            if (shouldEmitThisFrame) {
+                lastEmitTimeRef.current = now;
+                updateAxes();
+            } else {
+                updateAxes();
             }
 
             // --- BUTTONS ---
-            gp.buttons.forEach((btn, idx) => {
-                const name = STANDARD_BUTTONS[idx] ?? `Button${idx}`;
-                const isTrigger = idx === 6 || idx === 7;
-
+            gp.buttons.forEach((btn, i) => {
+                const name = STANDARD_BUTTONS[i] ?? `Button${i}`;
                 const value = btn.value;
-                const pressed = value > triggerThreshold;
-
                 const prevValue = prevButtonsRef.current[name] ?? 0;
+
+                const isTrigger = i === 6 || i === 7;
+                const pressed = value > triggerThreshold;
                 const prevPressed = prevValue > triggerThreshold;
 
                 if (!prevPressed && pressed) onButtonBinary?.(name, true);
                 if (prevPressed && !pressed) onButtonBinary?.(name, false);
-                if (isTrigger && Math.abs(value - prevValue) > triggerEpsilon) {
+
+                if (isTrigger && Math.abs(value - prevValue) > triggerEpsilon)
                     onButtonAnalog?.(name, value);
-                }
 
                 prevButtonsRef.current[name] = value;
             });
 
-            requestAnimationFrame(pollGamepad);
+            requestAnimationFrame(poll);
         };
 
-        pollGamepad();
+        lastEmitTimeRef.current = performance.now();
+        requestAnimationFrame(poll);
+
     }, [
-        id, onLeftJoystickMove, onRightJoystickMove,
-        onButtonBinary, onButtonAnalog,
-        joystickRateHz, joystickEmitMode, triggerThreshold, triggerEpsilon
+        id, joystickRateHz, joystickEmitMode,
+        deadzone, triggerThreshold, triggerEpsilon,
+        onLeftJoystickMove, onRightJoystickMove,
+        onButtonBinary, onButtonAnalog
     ]);
 };
