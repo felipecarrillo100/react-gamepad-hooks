@@ -30,7 +30,9 @@ yarn add react-gamepad-hooks
 
 ## Hooks
 
-### `useGamepadManager()`
+### Using GamepadManagerHook
+
+The useGamepadManager() hook provides a centralized way to track all connected gamepads and manage which one your app is using. It returns an object with:
 
 Tracks all connected gamepads and their status.
 
@@ -70,9 +72,23 @@ Tracks a single gamepad’s joysticks and buttons.
 ```ts
 import { useGamepadJoystick, JOYSTICK_EMIT_ON_CHANGE, JOYSTICK_EMIT_ALWAYS } from "react-gamepad-hooks";
 
+const { gamepads, nextAvailable, markBusy } = useGamepadManager();
+const [selectedGamepadIndex, setSelectedGamepadIndex] = useState<number | null>(null);
+
+// Automatically select next available gamepad on mount or when gamepads list changes
+useEffect(() => {
+    if (selectedGamepadIndex !== null) return; // already selected
+    const nextId = nextAvailable();
+    if (nextId !== null) {
+        setSelectedGamepadIndex(nextId);
+        markBusy(nextId, true);
+    }
+}, [gamepads, selectedGamepadIndex, nextAvailable, markBusy]);
+
+// Hook to listen to the selected gamepad
 useGamepadJoystick({
-  id: selectedGamepadIndex,
-  joystickRateHz: 60,
+  id: selectedGamepadIndex ?? -1, // invalid id ignored by hook
+  joystickRateHz: 30,
   joystickEmitMode: JOYSTICK_EMIT_ON_CHANGE,
   onLeftJoystickMove: (dx, dy) => console.log("Left stick:", dx, dy),
   onRightJoystickMove: (dx, dy) => console.log("Right stick:", dx, dy),

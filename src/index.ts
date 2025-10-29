@@ -129,16 +129,16 @@ export const useGamepadJoystick = ({
             if (!gp) return requestAnimationFrame(poll);
 
             const now = performance.now();
-            const shouldEmitThisFrame = (now - lastEmitTimeRef.current) >= intervalMs;
+            const shouldEmit = (now - lastEmitTimeRef.current) >= intervalMs;
 
             const axesRaw: Record<Side, { dx: number; dy: number }> = {
                 left: {
                     dx: Math.abs(gp.axes[0]) > deadzone ? gp.axes[0] : 0,
-                    dy: Math.abs(gp.axes[1]) > deadzone ? -gp.axes[1] : 0,
+                    dy: Math.abs(gp.axes[1]) > deadzone ? -gp.axes[1] : 0
                 },
                 right: {
                     dx: Math.abs(gp.axes[2]) > deadzone ? gp.axes[2] : 0,
-                    dy: Math.abs(gp.axes[3]) > deadzone ? -gp.axes[3] : 0,
+                    dy: Math.abs(gp.axes[3]) > deadzone ? -gp.axes[3] : 0
                 }
             };
 
@@ -152,13 +152,12 @@ export const useGamepadJoystick = ({
                 const changed = next.dx !== prev[side].dx || next.dy !== prev[side].dy;
 
                 if (joystickEmitMode === JOYSTICK_EMIT_ALWAYS) {
-                    if (callback && shouldEmitThisFrame) callback(next.dx, next.dy);
+                    if (callback && shouldEmit) callback(next.dx, next.dy);
                 } else {
-                    // JOYSTICK_EMIT_ON_CHANGE
                     if (isNeutral) {
-                        if (!wasNeutral && callback) callback(0, 0); // emit once returning to neutral
+                        if (!wasNeutral && callback) callback(0, 0);
                     } else {
-                        if (callback && (changed || shouldEmitThisFrame)) callback(next.dx, next.dy);
+                        if (callback && (changed || shouldEmit)) callback(next.dx, next.dy);
                     }
                 }
 
@@ -166,7 +165,6 @@ export const useGamepadJoystick = ({
                 lastNonNeutralRef.current[side] = !isNeutral;
             });
 
-            // --- BUTTONS ---
             gp.buttons.forEach((btn, i) => {
                 const name = STANDARD_BUTTONS[i] ?? `Button${i}`;
                 const value = btn.value;
@@ -184,14 +182,13 @@ export const useGamepadJoystick = ({
                 prevButtonsRef.current[name] = value;
             });
 
-            if (shouldEmitThisFrame) lastEmitTimeRef.current = now;
+            if (shouldEmit) lastEmitTimeRef.current = now;
 
             requestAnimationFrame(poll);
         };
 
         lastEmitTimeRef.current = performance.now();
         requestAnimationFrame(poll);
-
     }, [
         id, joystickRateHz, joystickEmitMode,
         deadzone, triggerThreshold, triggerEpsilon,
