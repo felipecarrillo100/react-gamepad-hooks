@@ -97,6 +97,8 @@ export const STANDARD_BUTTONS = [
     "Home"
 ];
 
+type Side = "left" | "right";
+
 export const useGamepadJoystick = ({
                                        id,
                                        onLeftJoystickMove,
@@ -111,8 +113,8 @@ export const useGamepadJoystick = ({
                                    }: GamepadJoystickProps) => {
 
     const lastEmitTimeRef = useRef(0);
-    const lastNonNeutralRef = useRef({ left: false, right: false });
-    const prevAxesRef = useRef({
+    const lastNonNeutralRef = useRef<Record<Side, boolean>>({ left: false, right: false });
+    const prevAxesRef = useRef<Record<Side, { dx: number; dy: number }>>({
         left: { dx: 0, dy: 0 },
         right: { dx: 0, dy: 0 }
     });
@@ -128,51 +130,41 @@ export const useGamepadJoystick = ({
 
             const now = performance.now();
             const shouldEmitThisFrame = (now - lastEmitTimeRef.current) >= intervalMs;
-            const updateAxes = () => {
-                const raw = {
-                    left: {
-                        dx: Math.abs(gp.axes[0]) > deadzone ? gp.axes[0] : 0,
-                        dy: Math.abs(gp.axes[1]) > deadzone ? -gp.axes[1] : 0,
-                    },
-                    right: {
-                        dx: Math.abs(gp.axes[2]) > deadzone ? gp.axes[2] : 0,
-                        dy: Math.abs(gp.axes[3]) > deadzone ? -gp.axes[3] : 0,
-                    }
-                };
 
-                const prev = prevAxesRef.current;
-
-                ["left", "right"].forEach(side => {
-                    const next = raw[side as "left" | "right"];
-                    const wasNeutral = !lastNonNeutralRef.current[side];
-                    const isNeutral = next.dx === 0 && next.dy === 0;
-                    const changed = next.dx !== prev[side].dx || next.dy !== prev[side].dy;
-                    const callback = side === "left" ? onLeftJoystickMove : onRightJoystickMove;
-
-                    if (joystickEmitMode === JOYSTICK_EMIT_ALWAYS) {
-                        if (shouldEmitThisFrame && callback) callback(next.dx, next.dy);
-
-                    } else {
-                        // JOYSTICK_EMIT_ON_CHANGE
-                        if (isNeutral) {
-                            if (!wasNeutral && callback) callback(0, 0);
-                        } else {
-                            if ((changed || shouldEmitThisFrame) && callback)
-                                callback(next.dx, next.dy);
-                        }
-                    }
-
-                    prev[side] = next;
-                    lastNonNeutralRef.current[side] = !isNeutral;
-                });
+            const axesRaw: Record<Side, { dx: number; dy: number }> = {
+                left: {
+                    dx: Math.abs(gp.axes[0]) > deadzone ? gp.axes[0] : 0,
+                    dy: Math.abs(gp.axes[1]) > deadzone ? -gp.axes[1] : 0,
+                },
+                right: {
+                    dx: Math.abs(gp.axes[2]) > deadzone ? gp.axes[2] : 0,
+                    dy: Math.abs(gp.axes[3]) > deadzone ? -gp.axes[3] : 0,
+                }
             };
 
-            if (shouldEmitThisFrame) {
-                lastEmitTimeRef.current = now;
-                updateAxes();
-            } else {
-                updateAxes();
-            }
+            (["left", "right"] as Side[]).forEach(side => {
+                const next = axesRaw[side];
+                const prev = prevAxesRef.current;
+                const callback = side === "left" ? onLeftJoystickMove : onRightJoystickMove;
+
+                const isNeutral = next.dx === 0 && next.dy === 0;
+                const wasNeutral = !lastNonNeutralRef.current[side];
+                const changed = next.dx !== prev[side].dx || next.dy !== prev[side].dy;
+
+                if (joystickEmitMode === JOYSTICK_EMIT_ALWAYS) {
+                    if (callback && shouldEmitThisFrame) callback(next.dx, next.dy);
+                } else {
+                    // JOYSTICK_EMIT_ON_CHANGE
+                    if (isNeutral) {
+                        if (!wasNeutral && callback) callback(0, 0); // emit once returning to neutral
+                    } else {
+                        if (callback && (changed || shouldEmitThisFrame)) callback(next.dx, next.dy);
+                    }
+                }
+
+                prev[side] = next;
+                lastNonNeutralRef.current[side] = !isNeutral;
+            });
 
             // --- BUTTONS ---
             gp.buttons.forEach((btn, i) => {
@@ -186,12 +178,13 @@ export const useGamepadJoystick = ({
 
                 if (!prevPressed && pressed) onButtonBinary?.(name, true);
                 if (prevPressed && !pressed) onButtonBinary?.(name, false);
-
                 if (isTrigger && Math.abs(value - prevValue) > triggerEpsilon)
                     onButtonAnalog?.(name, value);
 
                 prevButtonsRef.current[name] = value;
             });
+
+            if (shouldEmitThisFrame) lastEmitTimeRef.current = now;
 
             requestAnimationFrame(poll);
         };
