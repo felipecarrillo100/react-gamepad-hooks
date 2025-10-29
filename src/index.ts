@@ -12,6 +12,8 @@ export const STANDARD_BUTTONS = [
     "Home"
 ];
 
+const SIDES: ("left" | "right")[] = ["left", "right"];
+
 type Side = "left" | "right";
 
 // ------------------- Types -------------------
@@ -51,8 +53,9 @@ export const useGamepadManager = (): GamepadManagerHook => {
 
     const updateGamepads = () => {
         const gps = navigator.getGamepads ? navigator.getGamepads() : [];
-        const gpInfos: GamepadInfo[] = [];
+        const busyMap = new Map(gamepads.map(g => [g.index, g.busy]));
 
+        const gpInfos: GamepadInfo[] = [];
         for (const gp of gps) {
             if (!gp) continue;
             gpInfos.push({
@@ -63,7 +66,7 @@ export const useGamepadManager = (): GamepadManagerHook => {
                 axes: gp.axes.length,
                 buttons: gp.buttons.length,
                 battery: (gp as any).batteryLevel ?? null,
-                busy: gamepads.find(g => g.index === gp.index)?.busy ?? false,
+                busy: busyMap.get(gp.index) ?? false,
             });
         }
 
@@ -113,7 +116,6 @@ export const useGamepadJoystick = ({
                                        triggerThreshold = 0.1,
                                        triggerEpsilon = 0.01
                                    }: GamepadJoystickProps) => {
-
     const lastEmitTimeRef = useRef(0);
     const lastNonNeutralRef = useRef<Record<Side, boolean>>({ left: false, right: false });
     const prevAxesRef = useRef<Record<Side, { dx: number; dy: number }>>({
@@ -121,6 +123,10 @@ export const useGamepadJoystick = ({
         right: { dx: 0, dy: 0 }
     });
     const prevButtonsRef = useRef<Record<string, number>>({});
+    const axesRawRef = useRef<Record<Side, { dx: number; dy: number }>>({
+        left: { dx: 0, dy: 0 },
+        right: { dx: 0, dy: 0 }
+    });
 
     useEffect(() => {
         const intervalMs = 1000 / joystickRateHz;
@@ -133,19 +139,14 @@ export const useGamepadJoystick = ({
             const now = performance.now();
             const shouldEmit = (now - lastEmitTimeRef.current) >= intervalMs;
 
-            const axesRaw: Record<Side, { dx: number; dy: number }> = {
-                left: {
-                    dx: Math.abs(gp.axes[0]) > deadzone ? gp.axes[0] : 0,
-                    dy: Math.abs(gp.axes[1]) > deadzone ? -gp.axes[1] : 0
-                },
-                right: {
-                    dx: Math.abs(gp.axes[2]) > deadzone ? gp.axes[2] : 0,
-                    dy: Math.abs(gp.axes[3]) > deadzone ? -gp.axes[3] : 0
-                }
-            };
+            // --- AXES ---
+            axesRawRef.current.left.dx = Math.abs(gp.axes[0]) > deadzone ? gp.axes[0] : 0;
+            axesRawRef.current.left.dy = Math.abs(gp.axes[1]) > deadzone ? -gp.axes[1] : 0;
+            axesRawRef.current.right.dx = Math.abs(gp.axes[2]) > deadzone ? gp.axes[2] : 0;
+            axesRawRef.current.right.dy = Math.abs(gp.axes[3]) > deadzone ? -gp.axes[3] : 0;
 
-            (["left", "right"] as Side[]).forEach(side => {
-                const next = axesRaw[side];
+            SIDES.forEach(side => {
+                const next = axesRawRef.current[side];
                 const prev = prevAxesRef.current;
                 const callback = side === "left" ? onLeftJoystickMove : onRightJoystickMove;
 
@@ -155,7 +156,6 @@ export const useGamepadJoystick = ({
                 if (joystickEmitMode === JOYSTICK_EMIT_ALWAYS) {
                     if (callback && shouldEmit) callback(next.dx, next.dy);
                 } else {
-                    // JOYSTICK_EMIT_ON_CHANGE
                     const wasNonNeutral = lastNonNeutralRef.current[side];
                     if (isNeutral) {
                         if (wasNonNeutral && callback) callback(0, 0);
@@ -164,7 +164,7 @@ export const useGamepadJoystick = ({
                     }
                 }
 
-                prev[side] = next;
+                prev[side] = { ...next };
                 lastNonNeutralRef.current[side] = !isNeutral;
             });
 

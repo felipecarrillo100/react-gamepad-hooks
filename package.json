@@ -1,7 +1,7 @@
 {
   "name": "react-gamepad-hooks",
   "description": "React hooks for detecting and handling gamepads and joysticks (PlayStation, Xbox, etc).",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -30,6 +30,14 @@
     "type": "git",
     "url": "https://github.com/felipecarrillo100/react-gamepad-hooks.git"
   },
-  "keywords": ["react", "gamepad", "joystick", "hooks", "controller", "xbox", "playstation"],
+  "keywords": [
+    "react",
+    "gamepad",
+    "joystick",
+    "hooks",
+    "controller",
+    "xbox",
+    "playstation"
+  ],
   "license": "MIT"
 }
